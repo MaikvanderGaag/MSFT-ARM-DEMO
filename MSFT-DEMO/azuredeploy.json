@@ -1,0 +1,593 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "logicApp_Name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "logic_App_Authorisation_Rule_Name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "service_Bus_Topic_Name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "send_Authorisation_Rule_Name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "service_Bus_Topic_Subscription_Name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "service_Bus_Namespace_Name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "hosting_Plan_Name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "storage_Type": {
+      "type": "string",
+      "defaultValue": "Standard_LRS"
+    },
+    "storage_Name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "api_Name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "insights_Name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sku_Name": {
+      "type": "string"
+    },
+    "sku_Name_Hosting_Plan": {
+      "type": "string"
+    },
+    "sku_Capacity_Hosting_Plan": {
+      "type": "int",
+      "defaultValue": 1,
+      "minValue": 1
+    },
+    "logic_App_Servicebus_Connection_Name": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "variables": {
+    "defaultSASKeyName": "RootManageSharedAccessKey",
+    "authRuleResourceId": "[resourceId('Microsoft.ServiceBus/namespaces/authorizationRules', parameters('service_Bus_Namespace_Name'), variables('defaultSASKeyName'))]",
+    "storageAccountName": "[parameters('storage_Name')]",
+    "storageid": "[resourceId('Microsoft.Storage/storageAccounts',variables('storageAccountName'))]",
+    "defaultApiVersion": "2015-08-01",
+    "storageApiVersion": "2015-06-15",
+    "InsightsRuleApiVersion": "2014-04-01",
+    "logicAppApiVersion": "2016-06-01",
+    "location": "[resourceGroup().location]",
+    "singlequote": "'"
+  },
+  "resources": [
+    {
+      "apiVersion": "[variables('defaultApiVersion')]",
+      "name": "[parameters('hosting_Plan_Name')]",
+      "type": "Microsoft.Web/serverfarms",
+      "location": "[variables('location')]",
+      "tags": {
+        "displayName": "HostingPlan"
+      },
+      "sku": {
+        "name": "[parameters('sku_Name_Hosting_Plan')]",
+        "capacity": "[parameters('sku_Capacity_Hosting_Plan')]"
+      },
+      "properties": {
+        "name": "[parameters('hosting_Plan_Name')]"
+      }
+    },
+    {
+      "apiVersion": "[variables('defaultApiVersion')]",
+      "name": "[parameters('service_Bus_Namespace_Name')]",
+      "type": "Microsoft.ServiceBus/Namespaces",
+      "location": "[variables('location')]",
+      "tags": {
+        "displayName": "Service Bus"
+      },
+      "kind": "Messaging",
+      "sku": {
+        "name": "[parameters('sku_Name')]",
+        "tier": "[parameters('sku_Name')]"
+      },
+      "resources": [
+        {
+          "apiVersion": "[variables('defaultApiVersion')]",
+          "name": "[parameters('service_Bus_Topic_Name')]",
+          "type": "Topics",
+          "tags": {
+            "displayName": "SB-Topic"
+          },
+          "dependsOn": [
+            "[concat('Microsoft.ServiceBus/namespaces/', parameters('service_Bus_Namespace_Name'))]"
+          ],
+          "properties": {
+            "path": "[parameters('service_Bus_Topic_Name')]"
+          },
+          "resources": [
+            {
+              "apiVersion": "[variables('defaultApiVersion')]",
+              "name": "[parameters('service_Bus_Topic_Subscription_Name')]",
+              "type": "Subscriptions",
+              "tags": {
+                "displayName": "SB-Subscription"
+              },
+              "dependsOn": [
+                "[parameters('service_Bus_Topic_Name')]"
+              ],
+              "properties": {},
+              "resources": []
+            },
+            {
+              "apiVersion": "[variables('defaultApiVersion')]",
+              "name": "[parameters('send_Authorisation_Rule_Name')]",
+              "type": "authorizationRules",
+              "tags": {
+                "displayName": "SendAuthRule"
+              },
+              "dependsOn": [
+                "[parameters('service_Bus_Topic_Name')]"
+              ],
+              "properties": {
+                "Rights": [
+                  "Send"
+                ]
+              }
+            },
+            {
+              "apiVersion": "[variables('defaultApiVersion')]",
+              "name": "[parameters('logic_App_Authorisation_Rule_Name')]",
+              "type": "authorizationRules",
+              "tags": {
+                "displayName": "LogicAppAuthRule"
+              },
+              "dependsOn": [
+                "[parameters('service_Bus_Topic_Name')]"
+              ],
+              "properties": {
+                "Rights": [
+                  "Listen",
+                  "Send"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "apiVersion": "[variables('defaultApiVersion')]",
+          "name": "[parameters('logic_App_Authorisation_Rule_Name')]",
+          "type": "authorizationRules",
+          "tags": {
+            "displayName": "LogicAppAuth"
+          },
+          "dependsOn": [
+            "[parameters('service_Bus_Namespace_Name')]"
+          ],
+          "properties": {
+            "Rights": [
+              "Send",
+              "Listen"
+            ]
+          }
+        }
+
+      ]
+    },
+    {
+      "apiVersion": "[variables('InsightsRuleApiVersion')]",
+      "name": "[concat('ServerErrors ', parameters('api_Name'))]",
+      "type": "Microsoft.Insights/alertrules",
+      "location": "[variables('location')]",
+      "dependsOn": [
+        "[concat('Microsoft.Web/sites/', parameters('api_Name'))]"
+      ],
+      "tags": {
+        "[concat('hidden-link:', resourceGroup().id, '/providers/Microsoft.Web/sites/', parameters('api_Name'))]": "Resource",
+        "displayName": "ServerErrorsAlertRule"
+      },
+      "properties": {
+        "name": "[concat('ServerErrors ', parameters('api_Name'))]",
+        "description": "[concat(parameters('api_Name'), ' has some server errors, status code 5xx.')]",
+        "isEnabled": false,
+        "condition": {
+          "odata.type": "Microsoft.Azure.Management.Insights.Models.ThresholdRuleCondition",
+          "dataSource": {
+            "odata.type": "Microsoft.Azure.Management.Insights.Models.RuleMetricDataSource",
+            "resourceUri": "[concat(resourceGroup().id, '/providers/Microsoft.Web/sites/', parameters('api_Name'))]",
+            "metricName": "Http5xx"
+          },
+          "operator": "GreaterThan",
+          "threshold": 0.0,
+          "windowSize": "PT5M"
+        },
+        "action": {
+          "odata.type": "Microsoft.Azure.Management.Insights.Models.RuleEmailAction",
+          "sendToServiceOwners": true,
+          "customEmails": []
+        }
+      }
+    },
+    {
+      "apiVersion": "[variables('InsightsRuleApiVersion')]",
+      "name": "[concat('ForbiddenRequests ', parameters('api_Name'))]",
+      "type": "Microsoft.Insights/alertrules",
+      "location": "[variables('location')]",
+      "dependsOn": [
+        "[concat('Microsoft.Web/sites/', parameters('api_Name'))]"
+      ],
+      "tags": {
+        "[concat('hidden-link:', resourceGroup().id, '/providers/Microsoft.Web/sites/', parameters('api_Name'))]": "Resource",
+        "displayName": "ForbiddenRequestsAlertRule"
+      },
+      "properties": {
+        "name": "[concat('ForbiddenRequests ', parameters('api_Name'))]",
+        "description": "[concat(parameters('api_Name'), ' has some requests that are forbidden, status code 403.')]",
+        "isEnabled": false,
+        "condition": {
+          "odata.type": "Microsoft.Azure.Management.Insights.Models.ThresholdRuleCondition",
+          "dataSource": {
+            "odata.type": "Microsoft.Azure.Management.Insights.Models.RuleMetricDataSource",
+            "resourceUri": "[concat(resourceGroup().id, '/providers/Microsoft.Web/sites/', parameters('api_Name'))]",
+            "metricName": "Http403"
+          },
+          "operator": "GreaterThan",
+          "threshold": 0,
+          "windowSize": "PT5M"
+        },
+        "action": {
+          "odata.type": "Microsoft.Azure.Management.Insights.Models.RuleEmailAction",
+          "sendToServiceOwners": true,
+          "customEmails": []
+        }
+      }
+    },
+    {
+      "apiVersion": "[variables('InsightsRuleApiVersion')]",
+      "name": "[concat('CPUHigh ', parameters('hosting_Plan_Name'))]",
+      "type": "Microsoft.Insights/alertrules",
+      "location": "[variables('location')]",
+      "dependsOn": [
+        "[concat('Microsoft.Web/serverfarms/', parameters('hosting_Plan_Name'))]"
+      ],
+      "tags": {
+        "[concat('hidden-link:', resourceGroup().id, '/providers/Microsoft.Web/serverfarms/', parameters('hosting_Plan_Name'))]": "Resource",
+        "displayName": "CPUHighAlertRule"
+      },
+      "properties": {
+        "name": "[concat('CPUHigh ', parameters('hosting_Plan_Name'))]",
+        "description": "[concat('The average CPU is high across all the instances of ', parameters('hosting_Plan_Name'))]",
+        "isEnabled": false,
+        "condition": {
+          "odata.type": "Microsoft.Azure.Management.Insights.Models.ThresholdRuleCondition",
+          "dataSource": {
+            "odata.type": "Microsoft.Azure.Management.Insights.Models.RuleMetricDataSource",
+            "resourceUri": "[concat(resourceGroup().id, '/providers/Microsoft.Web/serverfarms/', parameters('hosting_Plan_Name'))]",
+            "metricName": "CpuPercentage"
+          },
+          "operator": "GreaterThan",
+          "threshold": 90,
+          "windowSize": "PT15M"
+        },
+        "action": {
+          "odata.type": "Microsoft.Azure.Management.Insights.Models.RuleEmailAction",
+          "sendToServiceOwners": true,
+          "customEmails": []
+        }
+      }
+    },
+    {
+      "apiVersion": "[variables('InsightsRuleApiVersion')]",
+      "name": "[concat('LongHttpQueue ', parameters('hosting_Plan_Name'))]",
+      "type": "Microsoft.Insights/alertrules",
+      "location": "[variables('location')]",
+      "dependsOn": [
+        "[concat('Microsoft.Web/serverfarms/', parameters('hosting_Plan_Name'))]"
+      ],
+      "tags": {
+        "[concat('hidden-link:', resourceGroup().id, '/providers/Microsoft.Web/serverfarms/', parameters('hosting_Plan_Name'))]": "Resource",
+        "displayName": "LongHttpQueueAlertRule"
+      },
+      "properties": {
+        "name": "[concat('LongHttpQueue ', parameters('hosting_Plan_Name'))]",
+        "description": "[concat('The HTTP queue for the instances of ', parameters('hosting_Plan_Name'), ' has a large number of pending requests.')]",
+        "isEnabled": false,
+        "condition": {
+          "odata.type": "Microsoft.Azure.Management.Insights.Models.ThresholdRuleCondition",
+          "dataSource": {
+            "odata.type": "Microsoft.Azure.Management.Insights.Models.RuleMetricDataSource",
+            "resourceUri": "[concat(resourceGroup().id, '/providers/Microsoft.Web/serverfarms/', parameters('hosting_Plan_Name'))]",
+            "metricName": "HttpQueueLength"
+          },
+          "operator": "GreaterThan",
+          "threshold": 100.0,
+          "windowSize": "PT5M"
+        },
+        "action": {
+          "odata.type": "Microsoft.Azure.Management.Insights.Models.RuleEmailAction",
+          "sendToServiceOwners": true,
+          "customEmails": []
+        }
+      }
+    },
+    {
+      "apiVersion": "2014-04-01",
+      "name": "[parameters('insights_Name')]",
+      "type": "Microsoft.Insights/components",
+      "location": "[variables('location')]",
+      "dependsOn": [
+        "[concat('Microsoft.Web/sites/', parameters('api_Name'))]"
+      ],
+      "tags": {
+        "[concat('hidden-link:', resourceGroup().id, '/providers/Microsoft.Web/sites/', parameters('api_Name'))]": "Resource",
+        "displayName": "Application Insights"
+      },
+      "properties": {
+        "applicationId": "[parameters('api_Name')]"
+      }
+    },
+    {
+      "apiVersion": "[variables('defaultApiVersion')]",
+      "name": "[parameters('api_Name')]",
+      "kind": "api",
+      "type": "Microsoft.Web/sites",
+      "location": "[variables('location')]",
+      "tags": {
+        "[concat('hidden-related:', resourceGroup().id, '/providers/Microsoft.Web/serverfarms/', parameters('hosting_Plan_Name'))]": "Resource",
+        "displayName": "API Application"
+      },
+      "dependsOn": [
+        "[concat('Microsoft.Web/serverfarms/', parameters('hosting_Plan_Name'))]"
+      ],
+      "properties": {
+        "name": "[parameters('api_Name')]",
+        "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', parameters('hosting_Plan_Name'))]",
+        "siteConfig": {
+          "AlwaysOn": true
+        }
+      },
+      "resources": [
+        {
+          "name": "appsettings",
+          "type": "config",
+          "apiVersion": "[variables('defaultApiVersion')]",
+          "dependsOn": [
+            "[concat('Microsoft.Web/sites/', parameters('api_Name'))]",
+            "[concat('Microsoft.Storage/storageAccounts/', variables('storageAccountName'))]"
+          ],
+          "tags": {
+            "displayName": "AppSettings"
+          },
+          "properties": {
+            "StorageConnectionString": "[concat('DefaultEndpointsProtocol=https;AccountName=',variables('storageAccountName'),';AccountKey=',listKeys(variables('storageAccountName'),'2016-01-01').keys[0].value)]",
+            "InstrumentationKey": "[reference(concat('Microsoft.Insights/components/', parameters('insights_Name'))).InstrumentationKey]",
+          }
+        }
+      ]
+    },
+    {
+      "name": "[variables('storageAccountName')]",
+      "type": "Microsoft.Storage/storageAccounts",
+      "location": "[variables('location')]",
+      "apiVersion": "[variables('storageApiVersion')]",
+      "dependsOn": [],
+      "tags": {
+        "displayName": "Storage Account"
+      },
+      "properties": {
+        "accountType": "[parameters('storage_Type')]"
+      }
+    },
+    {
+      "name": "[parameters('logicApp_Name')]",
+      "type": "Microsoft.Logic/workflows",
+      "location": "[variables('location')]",
+      "apiVersion": "[variables('logicAppApiVersion')]",
+      "dependsOn": [
+        "[concat('Microsoft.Web/sites/', parameters('api_Name'))]",
+        "[resourceId('Microsoft.Web/connections', parameters('logic_App_Servicebus_Connection_Name'))]"
+      ],
+      "tags": {
+        "displayName": "Demo Logic App"
+      },
+      "properties": {
+        "definition": {
+          "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+          "actions": {
+            "Dead-letter_the_message_in_a_topic_subscription": {
+              "inputs": {
+                "host": {
+                  "api": {
+                    "runtimeUrl": "https://logic-apis-westeurope.azure-apim.net/apim/servicebus"
+                  },
+                  "connection": {
+                    "name": "@parameters('$connections')['servicebus']['connectionId']"
+                  }
+                },
+                "method": "post",
+                "path": "[concat('/@{encodeURIComponent(',variables('singlequote'), parameters('service_Bus_Topic_Name'), variables('singlequote'),')}/subscriptions/@{encodeURIComponent(', variables('singlequote'), parameters('service_Bus_Topic_Subscription_Name'), variables('singlequote'), ')}/messages/deadletter')]",
+                "queries": {
+                  "lockToken": "@{triggerBody()?['LockToken']}"
+                }
+              },
+              "runAfter": {
+                "For_each_error": [
+                  "Succeeded"
+                ]
+              },
+              "type": "ApiConnection"
+            },
+            "Complete_the_message_in_a_topic_subscription_when_succeeded": {
+              "inputs": {
+                "host": {
+                  "api": {
+                    "runtimeUrl": "https://logic-apis-westeurope.azure-apim.net/apim/servicebus"
+                  },
+                  "connection": {
+                    "name": "@parameters('$connections')['servicebus']['connectionId']"
+                  }
+                },
+                "method": "delete",
+                "path": "[concat('/@{encodeURIComponent(',variables('singlequote'), parameters('service_Bus_Topic_Name'), variables('singlequote'),')}/subscriptions/@{encodeURIComponent(', variables('singlequote'), parameters('service_Bus_Topic_Subscription_Name'), variables('singlequote'), ')}/messages/complete')]",
+                "queries": {
+                  "lockToken": "@{triggerBody()?['LockToken']}",
+                  "subscriptionType": "Main"
+                }
+              },
+              "runAfter": {
+                "Scope": [
+                  "Succeeded"
+                ]
+              },
+              "type": "ApiConnection"
+            },
+            "Filter_array": {
+              "inputs": {
+                "from": "@result('Scope')",
+                "where": "@equals(item()['status'], 'Failed')"
+              },
+              "runAfter": {
+                "Scope": [
+                  "Failed"
+                ]
+              },
+              "type": "Query"
+            },
+            "For_each_error": {
+              "actions": {
+                "Error_Post": {
+                  "inputs": {
+                    "body": "@{item()}",
+                    "headers": {
+                      "Content-Type": "application/json"
+                    },
+                    "method": "post",
+                    "retryPolicy": {
+                      "type": "None"
+                    },
+                    "uri": "[concat('https://', reference(concat('Microsoft.Web/sites/', parameters('api_Name'))).defaultHostName, '/api/Error')]"
+                  },
+                  "runAfter": {},
+                  "type": "Http"
+                }
+              },
+              "foreach": "@body('Filter_array')",
+              "runAfter": {
+                "Filter_array": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Foreach"
+            },
+            "Scope": {
+              "actions": {
+                "HTTP_GetInfo": {
+                  "inputs": {
+                    "method": "GET",
+                    "retryPolicy": {
+                      "type": "None"
+                    },
+                    "uri": "[concat('https://', reference(concat('Microsoft.Web/sites/', parameters('api_Name'))).defaultHostName,'/api/Info/')]"
+                  },
+                  "runAfter": {},
+                  "type": "Http"
+                }
+              },
+              "runAfter": {},
+              "type": "Scope"
+            }
+          },
+          "contentVersion": "1.0.0.0",
+          "outputs": {},
+          "parameters": {
+            "$connections": {
+              "defaultValue": {},
+              "type": "Object"
+            }
+          },
+          "triggers": {
+            "When_a_message_is_received_in_a_topic_subscription_(peek-lock)": {
+              "inputs": {
+                "host": {
+                  "api": {
+                    "runtimeUrl": "https://logic-apis-westeurope.azure-apim.net/apim/servicebus"
+                  },
+                  "connection": {
+                    "name": "@parameters('$connections')['servicebus']['connectionId']"
+                  }
+                },
+                "method": "get",
+                "path": "[concat('/@{encodeURIComponent(',variables('singlequote'), parameters('service_Bus_Topic_Name'), variables('singlequote'),')}/subscriptions/@{encodeURIComponent(', variables('singlequote'), parameters('service_Bus_Topic_Subscription_Name'), variables('singlequote'), ')}/messages/head/peek')]",
+                "queries": {
+                  "sessionId": "None",
+                  "subscriptionType": "Main"
+                }
+              },
+              "operationOptions": "SingleInstance",
+              "recurrence": {
+                "interval": 30,
+                "frequency": "Second"
+              },
+              "type": "ApiConnection"
+            }
+          }
+        },
+        "parameters": {
+          "$connections": {
+            "value": {
+              "servicebus": {
+                "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', variables('location'), '/managedApis/', 'servicebus')]",
+                "connectionId": "[concat(resourceGroup().id, '/providers/Microsoft.Web/connections/', parameters('logic_App_Servicebus_Connection_Name'))]",
+                "connectionName": "[parameters('logic_App_Servicebus_Connection_Name')]"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "[variables('logicAppApiVersion')]",
+      "dependsOn": [
+        "[parameters('service_Bus_Topic_Name')]"
+      ],
+      "location": "[variables('location')]",
+      "name": "[parameters('logic_App_Servicebus_Connection_Name')]",
+      "properties": {
+        "api": {
+          "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', variables('location'), '/managedApis/', 'servicebus')]"
+        },
+        "displayName": "[parameters('logic_App_Servicebus_Connection_Name')]",
+        "parameterValues": {
+          "connectionString": "[listKeys(resourceId(concat('Microsoft.ServiceBus/namespaces/AuthorizationRules'),parameters('service_Bus_Namespace_Name'),parameters('logic_App_Authorisation_Rule_Name')),variables('defaultApiVersion')).primaryConnectionString]"
+        }
+      },
+      "tags": {
+        "displayName": "ServiceBusInvoicesConnection"
+      },
+      "type": "MICROSOFT.WEB/CONNECTIONS"
+    }
+  ],
+  "outputs": {
+    "NamespaceConnectionString": {
+      "type": "string",
+      "value": "[listkeys(variables('authRuleResourceId'), variables('defaultApiVersion')).primaryConnectionString]"
+    },
+    "SharedAccessPolicyPrimaryKey": {
+      "type": "string",
+      "value": "[listkeys(variables('authRuleResourceId'), variables('defaultApiVersion')).primaryKey]"
+    }
+  }
+}

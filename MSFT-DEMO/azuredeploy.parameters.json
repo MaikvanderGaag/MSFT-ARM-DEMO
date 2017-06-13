@@ -1,0 +1,21 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "logicApp_Name": { "value": "msft-demo-logicapp" },
+    "logic_App_Authorisation_Rule_Name": { "value": "logicapps" },
+    "service_Bus_Topic_Name": { "value": "msft.demo.topic" },
+    "send_Authorisation_Rule_Name": { "value": "sendauthrule" },
+    "service_Bus_Topic_Subscription_Name": { "value": "Default" },
+    "service_Bus_Namespace_Name": { "value": "msft-servicebus-demo" },
+    "sku_Name": { "value": "Standard" },
+    "sku_Name_Hosting_Plan": { "value": "B1" },
+    "hosting_Plan_Name": { "value": "msft-demo-hosting" },
+    "sku_Capacity_Hosting_Plan": { "value": 1 },
+    "storage_Type": { "value": "Standard_LRS" },
+    "storage_Name": { "value": "msftdemostoragenew" },
+    "api_Name": { "value": "msft-demo-api" },
+    "insights_Name": { "value": "msft-demo-insights" },
+    "logic_App_Servicebus_Connection_Name": { "value": "servicebus-connection" }
+  }
+}
